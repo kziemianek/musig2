@@ -2,6 +2,7 @@
 #![doc = include_str!("../doc/API.md")]
 #![allow(non_snake_case)]
 #![warn(missing_docs)]
+#![feature(is_some_and)]
 
 #[cfg(all(not(feature = "secp256k1"), not(feature = "k256")))]
 compile_error!("At least one of the `secp256k1` or `k256` features must be enabled.");
