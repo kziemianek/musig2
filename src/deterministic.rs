@@ -14,6 +14,7 @@
 //! For deterministic nonces in a multi-signer environment, you will need
 //! zero-knowledge proofs. See [this paper for details](https://eprint.iacr.org/2020/1057.pdf).
 use secp::{MaybePoint, Scalar};
+use sgx_tstd::vec;
 
 use crate::{AdaptorSignature, LiftedSignature};
 

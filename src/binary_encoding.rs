@@ -188,7 +188,7 @@ macro_rules! impl_encoding_traits {
         impl std::fmt::LowerHex for $typename {
             fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
                 let bytes = self.to_bytes();
-                let mut buffer = vec![0; bytes.len() * 2];
+                let mut buffer = std::vec![0; bytes.len() * 2];
                 let encoded = base16ct::lower::encode_str(&bytes, &mut buffer).unwrap();
                 f.write_str(encoded)
             }
@@ -197,7 +197,7 @@ macro_rules! impl_encoding_traits {
         impl std::fmt::UpperHex for $typename {
             fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
                 let bytes = self.to_bytes();
-                let mut buffer = vec![0; bytes.len() * 2];
+                let mut buffer = std::vec![0; bytes.len() * 2];
                 let encoded = base16ct::upper::encode_str(&bytes, &mut buffer).unwrap();
                 f.write_str(encoded)
             }

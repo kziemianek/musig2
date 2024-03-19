@@ -1,6 +1,8 @@
 //! Various error types for different kinds of failures.
-
 use crate::KeyAggContext;
+use sgx_tstd::format;
+use sgx_tstd::string::String;
+use sgx_tstd::string::ToString;
 
 use std::error::Error;
 use std::fmt;

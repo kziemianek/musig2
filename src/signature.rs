@@ -1,4 +1,5 @@
 use secp::{MaybePoint, MaybeScalar, Point, Scalar, G};
+use sgx_tstd::vec::Vec;
 
 use crate::errors::DecodeError;
 use crate::BinaryEncoding;

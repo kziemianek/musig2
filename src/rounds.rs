@@ -3,6 +3,7 @@ use crate::{
     sign_partial, AdaptorSignature, AggNonce, KeyAggContext, LiftedSignature, NonceSeed,
     PartialSignature, PubNonce, SecNonce, SecNonceSpices,
 };
+use sgx_tstd::vec::Vec;
 
 use secp::{MaybePoint, MaybeScalar, Point, Scalar};
 

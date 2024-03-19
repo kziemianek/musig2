@@ -1,4 +1,5 @@
 use secp::{MaybePoint, MaybeScalar, Point, Scalar, G};
+use sgx_tstd::vec::Vec;
 use std::collections::HashMap;
 
 use crate::errors::{DecodeError, InvalidSecretKeysError, KeyAggError, TweakError};

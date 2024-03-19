@@ -1,5 +1,6 @@
 use crate::errors::DecodeError;
 use crate::{tagged_hashes, BinaryEncoding};
+use sgx_tstd::vec::Vec;
 
 use secp::{MaybePoint, MaybeScalar, Point, Scalar, G};
 
