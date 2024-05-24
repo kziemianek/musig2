@@ -221,9 +221,18 @@ impl BatchVerificationRow {
         adaptor_point: MaybePoint,
     ) -> Self {
         let pubkey = pubkey.into();
-        let effective_nonce = adaptor_signature.R + adaptor_point;
+        let adapted_nonce = adaptor_signature.R + adaptor_point;
+
+        // If the adapted nonce is odd-parity, the signer should have negated their nonce
+        // when signing.
+        let effective_nonce = if adapted_nonce.has_even_y() {
+            adaptor_signature.R
+        } else {
+            -adaptor_signature.R
+        };
+
         let challenge = compute_challenge_hash_tweak(
-            &effective_nonce.serialize_xonly(),
+            &adapted_nonce.serialize_xonly(),
             &pubkey,
             message.as_ref(),
         );
@@ -231,7 +240,7 @@ impl BatchVerificationRow {
         BatchVerificationRow {
             pubkey,
             challenge,
-            R: adaptor_signature.R,
+            R: effective_nonce,
             s: adaptor_signature.s,
         }
     }
@@ -274,7 +283,7 @@ pub fn verify_batch(rows: &[BatchVerificationRow]) -> Result<(), VerifyError> {
     };
 
     let mut lhs = MaybeScalar::Zero;
-    let mut rhs_terms = Vec::<MaybePoint>::with_capacity(rows.len());
+    let mut rhs_terms = Vec::<MaybePoint>::with_capacity(rows.len() * 2);
 
     for (i, row) in rows.into_iter().enumerate() {
         let random = if i == 0 {

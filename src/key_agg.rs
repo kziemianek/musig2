@@ -35,6 +35,9 @@ pub struct KeyAggContext {
     /// same order as `ordered_pubkeys`.
     pub(crate) key_coefficients: Vec<MaybeScalar>,
 
+    /// A cache of effective individual pubkeys, i.e. `pubkey * self.key_coefficient(pubkey)`.
+    pub(crate) effective_pubkeys: Vec<MaybePoint>,
+
     pub(crate) parity_acc: subtle::Choice, // false means g=1, true means g=n-1
     pub(crate) tweak_acc: MaybeScalar,     // None means zero.
 }
@@ -109,7 +112,7 @@ impl KeyAggContext {
 
         let pk_list_hash = hash_pubkeys(&ordered_pubkeys);
 
-        let (tweaked_pubkeys, key_coefficients): (Vec<MaybePoint>, Vec<MaybeScalar>) =
+        let (effective_pubkeys, key_coefficients): (Vec<MaybePoint>, Vec<MaybeScalar>) =
             ordered_pubkeys
                 .iter()
                 .map(|&pubkey| {
@@ -119,7 +122,7 @@ impl KeyAggContext {
                 })
                 .unzip();
 
-        let aggregated_pubkey = MaybePoint::sum(tweaked_pubkeys).not_inf()?;
+        let aggregated_pubkey = MaybePoint::sum(&effective_pubkeys).not_inf()?;
 
         let pubkey_indexes = HashMap::from_iter(
             ordered_pubkeys
@@ -134,6 +137,7 @@ impl KeyAggContext {
             ordered_pubkeys,
             pubkey_indexes,
             key_coefficients,
+            effective_pubkeys,
             parity_acc: subtle::Choice::from(0),
             tweak_acc: MaybeScalar::Zero,
         })
@@ -450,6 +454,17 @@ impl KeyAggContext {
         Some(self.key_coefficients[index])
     }
 
+    /// Finds the effective pubkey for a given individual pubkey. This is
+    /// essentially the same as `pubkey * key_agg_ctx.key_coefficient(pubkey)`,
+    /// except it is faster than recomputing it manually because the `key_agg_ctx`
+    /// caches this value internally.
+    ///
+    /// Returns `None` if the given `pubkey` is not part of the aggregated key.
+    pub fn effective_pubkey<T: From<MaybePoint>>(&self, pubkey: impl Into<Point>) -> Option<T> {
+        let index = self.pubkey_index(pubkey)?;
+        Some(T::from(self.effective_pubkeys[index]))
+    }
+
     /// Compute the aggregated secret key for the [`KeyAggContext`] given an ordered
     /// set of secret keys. Returns [`InvalidSecretKeysError`] if the secret keys do not
     /// align with the ordered set of pubkeys intially given to the [`KeyAggContext`],
@@ -458,14 +473,12 @@ impl KeyAggContext {
         &self,
         seckeys: impl IntoIterator<Item = Scalar>,
     ) -> Result<T, InvalidSecretKeysError> {
-        let group_untweaked_pubkey: Point = self.aggregated_pubkey_untweaked();
-
         let mut group_seckey = MaybeScalar::Zero;
         for (i, seckey) in seckeys.into_iter().enumerate() {
             let key_coeff = *self.key_coefficients.get(i).ok_or(InvalidSecretKeysError)?;
             group_seckey += seckey * key_coeff;
         }
-        group_seckey = group_seckey.negate_if(group_untweaked_pubkey.parity());
+        group_seckey = group_seckey.negate_if(self.parity_acc);
 
         let group_tweaked_seckey = (group_seckey + self.tweak_acc).not_zero()?;
 
@@ -910,12 +923,12 @@ mod tests {
         }
     }
 
+    // The test is repeated to catch failures caused by keys whose
+    // parity randomly align to make incorrect parity-handling code succeed.
     #[test]
-    fn secret_key_aggregation() {
-        // The test is repeated to catch failures caused by keys whose
-        // parity randomly align to make incorrect parity-handling code succeed.
+    fn secret_key_aggregation_random() {
+        let mut rng = rand::thread_rng();
         for _ in 0..16 {
-            let mut rng = rand::thread_rng();
             let seckeys = [
                 Scalar::random(&mut rng),
                 Scalar::random(&mut rng),
@@ -928,20 +941,37 @@ mod tests {
                 .map(|seckey| seckey.base_point_mul())
                 .collect();
 
-            let key_agg_ctx = KeyAggContext::new(pubkeys)
-                .unwrap()
-                .with_unspendable_taproot_tweak()
-                .unwrap();
+            // Without tweak
+            {
+                let key_agg_ctx = KeyAggContext::new(pubkeys.clone()).unwrap();
+                let group_seckey: Scalar = key_agg_ctx.aggregated_seckey(seckeys).unwrap();
+                let group_pubkey: Point = key_agg_ctx.aggregated_pubkey();
+                assert_eq!(group_seckey.base_point_mul(), group_pubkey);
 
-            let group_seckey: Scalar = key_agg_ctx.aggregated_seckey(seckeys).unwrap();
-            let group_pubkey: Point = key_agg_ctx.aggregated_pubkey();
-            assert_eq!(group_seckey.base_point_mul(), group_pubkey);
+                let message = b"hello world";
+                let signature: CompactSignature = sign_solo(group_seckey, message, &mut rng);
 
-            let message = b"hello world";
-            let signature: CompactSignature = sign_solo(group_seckey, message, &mut rng);
+                verify_single(group_pubkey, signature, message)
+                    .expect("tweaked signature as group should be valid");
+            }
 
-            verify_single(group_pubkey, signature, message)
-                .expect("signature as group should be valid");
+            // With a tweak
+            {
+                let key_agg_ctx = KeyAggContext::new(pubkeys.clone())
+                    .unwrap()
+                    .with_unspendable_taproot_tweak()
+                    .unwrap();
+
+                let group_seckey: Scalar = key_agg_ctx.aggregated_seckey(seckeys).unwrap();
+                let group_pubkey: Point = key_agg_ctx.aggregated_pubkey();
+                assert_eq!(group_seckey.base_point_mul(), group_pubkey);
+
+                let message = b"hello world";
+                let signature: CompactSignature = sign_solo(group_seckey, message, &mut rng);
+
+                verify_single(group_pubkey, signature, message)
+                    .expect("tweaked signature as group should be valid");
+            }
         }
     }
 }
