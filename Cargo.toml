@@ -32,7 +32,7 @@ serde_json = "1.0.107"
 csv = "1.3.0"
 serdect = "0.2.0"
 rand = "0.8.5"
-secp = { version = "0.2.0", default-features = false, branch = "k256-fix", git = "https://github.com/kziemianek/secp.git", features = ["serde", "rand", "secp256k1-invert"]  }
+secp = { default-features = false, branch = "k256-fix", git = "https://github.com/kziemianek/secp.git", features = ["serde", "rand", "secp256k1-invert"]  }
 
 [features]
 default = ["secp256k1"]
