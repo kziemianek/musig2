@@ -5,6 +5,7 @@ use sgx_tstd::vec::Vec;
 use secp::{MaybePoint, MaybeScalar, Point, Scalar, G};
 
 use sha2::Digest as _;
+use sha2_v08_wrapper::Digest as _;
 
 /// Represents the primary source of entropy for building a [`SecNonce`].
 ///
@@ -332,42 +333,39 @@ impl<'snb> SecNonceBuilder<'snb> {
             None => [0u8; 32],
         };
 
-        let nonce_seed_hash: [u8; 32] = tagged_hashes::MUSIG_AUX_TAG_HASHER
-            .clone()
-            .chain_update(&self.nonce_seed_bytes)
-            .finalize()
-            .into();
+        let mut hasher = tagged_hashes::MUSIG_AUX_TAG_HASHER.clone();
+        hasher.input(&self.nonce_seed_bytes);
+        let nonce_seed_hash: [u8; 32] = hasher.result().into();
 
-        let mut hasher = tagged_hashes::MUSIG_NONCE_TAG_HASHER
-            .clone()
-            .chain_update(&xor_bytes(&seckey_bytes, &nonce_seed_hash));
+        hasher = tagged_hashes::MUSIG_NONCE_TAG_HASHER.clone();
+        hasher.input(&xor_bytes(&seckey_bytes, &nonce_seed_hash));
 
         // BIP327 doesn't allow the public key to be an optional argument,
         // but there is no hard reason for that other than 'the RNG might fail'.
         // For ergonomics we allow the pubkey to be omitted here in the same
         // fashion as the aggregated pubkey.
         match self.pubkey {
-            None => hasher.update(&[0]),
+            None => hasher.input(&[0]),
             Some(pubkey) => {
-                hasher.update(&[33]); // individual pubkey len
-                hasher.update(&pubkey.serialize());
+                hasher.input(&[33]); // individual pubkey len
+                hasher.input(&pubkey.serialize());
             }
         }
 
         match self.aggregated_pubkey {
-            None => hasher.update(&[0]),
+            None => hasher.input(&[0]),
             Some(aggregated_pubkey) => {
-                hasher.update(&[32]); // aggregated pubkey len
-                hasher.update(&aggregated_pubkey.serialize_xonly());
+                hasher.input(&[32]); // aggregated pubkey len
+                hasher.input(&aggregated_pubkey.serialize_xonly());
             }
         };
 
         match self.message {
-            None => hasher.update(&[0]),
+            None => hasher.input(&[0]),
             Some(message) => {
-                hasher.update(&[1]);
-                hasher.update(&(message.len() as u64).to_be_bytes());
-                hasher.update(message);
+                hasher.input(&[1]);
+                hasher.input(&(message.len() as u64).to_be_bytes());
+                hasher.input(message);
             }
         };
 
@@ -379,15 +377,20 @@ impl<'snb> SecNonceBuilder<'snb> {
                 .map(|extra_in| extra_in.as_ref().len())
                 .sum();
 
-            hasher.update(&(extra_input_total_len as u32).to_be_bytes());
+            hasher.input(&(extra_input_total_len as u32).to_be_bytes());
             for extra_input in self.extra_inputs {
-                hasher.update(extra_input.as_ref());
+                hasher.input(extra_input.as_ref());
             }
         }
 
         // Cloning the hash engine state reduces the computations needed.
-        let hash1 = <[u8; 32]>::from(hasher.clone().chain_update(&[0]).finalize());
-        let hash2 = <[u8; 32]>::from(hasher.clone().chain_update(&[1]).finalize());
+        let mut hasher_cloned = hasher.clone();
+
+        hasher.input(&[0]);
+        let hash1: [u8; 32] = hasher.result().into();
+
+        hasher_cloned.input(&[1]);
+        let hash2: [u8; 32] = hasher_cloned.result().into();
 
         let k1 = match MaybeScalar::reduce_from(&hash1) {
             MaybeScalar::Zero => Scalar::one(),
@@ -607,14 +610,13 @@ impl AggNonce {
     where
         S: From<MaybeScalar>,
     {
-        let hash: [u8; 32] = tagged_hashes::MUSIG_NONCECOEF_TAG_HASHER
-            .clone()
-            .chain_update(&self.R1.serialize())
-            .chain_update(&self.R2.serialize())
-            .chain_update(&aggregated_pubkey.into().serialize_xonly())
-            .chain_update(message.as_ref())
-            .finalize()
-            .into();
+        let mut hasher = tagged_hashes::MUSIG_NONCECOEF_TAG_HASHER.clone();
+        hasher.input(&self.R1.serialize());
+        hasher.input(&self.R2.serialize());
+        hasher.input(&aggregated_pubkey.into().serialize_xonly());
+        hasher.input(message.as_ref());
+
+        let hash: [u8; 32] = hasher.result().into();
 
         S::from(MaybeScalar::reduce_from(&hash))
     }

@@ -6,6 +6,7 @@ use crate::errors::{DecodeError, InvalidSecretKeysError, KeyAggError, TweakError
 use crate::{tagged_hashes, BinaryEncoding};
 
 use sha2::Digest as _;
+use sha2_v08_wrapper::Digest as _;
 use subtle::ConstantTimeEq as _;
 
 /// Represents an aggregated and tweaked public key.
@@ -263,12 +264,10 @@ impl KeyAggContext {
 
     fn with_taproot_tweak_internal(self, merkle_root: &[u8]) -> Result<Self, TweakError> {
         // t = int(H_taptweak(xbytes(P), k))
-        let tweak_hash: [u8; 32] = tagged_hashes::TAPROOT_TWEAK_TAG_HASHER
-            .clone()
-            .chain_update(&self.pubkey.serialize_xonly())
-            .chain_update(&merkle_root)
-            .finalize()
-            .into();
+        let mut hasher = tagged_hashes::TAPROOT_TWEAK_TAG_HASHER.clone();
+        hasher.input(&self.pubkey.serialize_xonly());
+        hasher.input(&merkle_root);
+        let tweak_hash: [u8; 32] = hasher.result().into();
 
         let tweak = Scalar::try_from(tweak_hash).map_err(|_| TweakError)?;
         self.with_xonly_tweak(tweak)
@@ -480,9 +479,9 @@ impl KeyAggContext {
 fn hash_pubkeys<P: std::borrow::Borrow<Point>>(ordered_pubkeys: &[P]) -> [u8; 32] {
     let mut h = tagged_hashes::KEYAGG_LIST_TAG_HASHER.clone();
     for pubkey in ordered_pubkeys {
-        h.update(&pubkey.borrow().serialize());
+        h.input(&pubkey.borrow().serialize());
     }
-    h.finalize().into()
+    h.result().into()
 }
 
 fn compute_key_aggregation_coefficient(
@@ -494,12 +493,11 @@ fn compute_key_aggregation_coefficient(
         return MaybeScalar::one();
     }
 
-    let hash: [u8; 32] = tagged_hashes::KEYAGG_COEFF_TAG_HASHER
-        .clone()
-        .chain_update(&pk_list_hash)
-        .chain_update(&pubkey.serialize())
-        .finalize()
-        .into();
+    let mut hasher = tagged_hashes::KEYAGG_COEFF_TAG_HASHER.clone();
+    hasher.input(&pk_list_hash);
+    hasher.input(&pubkey.serialize());
+
+    let hash: [u8; 32] = hasher.result().into();
 
     MaybeScalar::reduce_from(&hash)
 }

@@ -13,7 +13,7 @@ include = ["/src", "!/src/test_vectors", "*.md"]
 [dependencies]
 base16ct = { version = "0.2.0", default-features = false, features = ["alloc"] }
 hmac = { version = "0.12.1", default-features = false, features = [] }
-k256 = { version = "0.13.1", default-features = false, optional = true }
+k256 = { branch = "sgx-sha-workaround", git = "https://github.com/kziemianek/elliptic-curves.git", default-features = false, optional = true }
 once_cell = { package = "once_cell", branch = "master", git = "https://github.com/mesalock-linux/once_cell-sgx" }
 rand = { version = "0.8.5", optional = true, default-features = false, features = ["std_rng"] }
 secp = { package = "secp", branch = "sgx", git = "https://github.com/kziemianek/secp.git", default-features = false }
@@ -21,6 +21,7 @@ secp256k1 = { version = "0.28.0", optional = true, default-features = false, fea
 serde = { version = "1.0.188", default-features = false, optional = true }
 serdect = { version = "0.2.0", default-features = false, optional = true, features = ["alloc"] }
 sha2 = { version = "0.10.7", default-features = false }
+sha2_v08_wrapper = { git = "https://github.com/kailai-wang/sha2_v08", default-features = false }
 subtle = { package = "subtle", branch = "2.5.0-update", git = "https://github.com/kziemianek/subtle-sgx.git", features = ["const-generics"] }
 sgx_tstd = { branch = "master", git = "https://github.com/apache/teaclave-sgx-sdk.git" }
 

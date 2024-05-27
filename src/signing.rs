@@ -4,6 +4,7 @@ use crate::{tagged_hashes, AggNonce, KeyAggContext, PubNonce, SecNonce};
 use secp::{MaybePoint, MaybeScalar, Point, Scalar, G};
 
 use sha2::Digest as _;
+use sha2_v08_wrapper::Digest;
 
 /// Partial signatures are just scalars in the range `[0, n)`.
 ///
@@ -20,13 +21,12 @@ pub fn compute_challenge_hash_tweak<S: From<MaybeScalar>>(
     aggregated_pubkey: &Point,
     message: impl AsRef<[u8]>,
 ) -> S {
-    let hash: [u8; 32] = tagged_hashes::BIP0340_CHALLENGE_TAG_HASHER
-        .clone()
-        .chain_update(final_nonce_xonly)
-        .chain_update(&aggregated_pubkey.serialize_xonly())
-        .chain_update(message.as_ref())
-        .finalize()
-        .into();
+    let mut hasher = tagged_hashes::BIP0340_CHALLENGE_TAG_HASHER.clone();
+    hasher.input(final_nonce_xonly);
+    hasher.input(&aggregated_pubkey.serialize_xonly());
+    hasher.input(message.as_ref());
+
+    let hash: [u8; 32] = hasher.result().into();
 
     S::from(MaybeScalar::reduce_from(&hash))
 }

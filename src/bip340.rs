@@ -10,6 +10,7 @@ use secp::{MaybePoint, MaybeScalar, Point, Scalar, G};
 use rand::SeedableRng as _;
 
 use sha2::Digest as _;
+use sha2_v08_wrapper::Digest as _;
 use subtle::ConstantTimeEq as _;
 
 /// Create a [BIP340-compatible](https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki)
@@ -40,21 +41,17 @@ pub fn sign_solo_adaptor(
     let pubkey = seckey.base_point_mul();
     let d = seckey.negate_if(pubkey.parity());
 
-    let h: [u8; 32] = tagged_hashes::BIP0340_AUX_TAG_HASHER
-        .clone()
-        .chain_update(&nonce_seed.0)
-        .finalize()
-        .into();
+    let mut hasher = tagged_hashes::BIP0340_AUX_TAG_HASHER.clone();
+    hasher.input(&nonce_seed.0);
+    let h: [u8; 32] = hasher.result().into();
 
     let t = xor_bytes(&h, &d.serialize());
 
-    let rand: [u8; 32] = tagged_hashes::BIP0340_NONCE_TAG_HASHER
-        .clone()
-        .chain_update(&t)
-        .chain_update(&pubkey.serialize_xonly())
-        .chain_update(message.as_ref())
-        .finalize()
-        .into();
+    hasher = tagged_hashes::BIP0340_NONCE_TAG_HASHER.clone();
+    hasher.input(&t);
+    hasher.input(&pubkey.serialize_xonly());
+    hasher.input(message.as_ref());
+    let rand: [u8; 32] = hasher.result().into();
 
     // BIP340 says to fail if we get a nonce reducing to zero, but this is so
     // unlikely that the failure condition is not worth it. Default to 1 instead.
@@ -264,13 +261,13 @@ pub fn verify_batch(rows: &[BatchVerificationRow]) -> Result<(), VerifyError> {
         // we're not explicitly seeding the RNG with the pubkey, nonce, and message
         // as suggested by BIP340.
         for row in rows {
-            seed_hash.update(&row.challenge.serialize());
+            seed_hash.input(&row.challenge.serialize());
         }
 
         for row in rows {
-            seed_hash.update(&row.s.serialize());
+            seed_hash.input(&row.s.serialize());
         }
-        rand::rngs::StdRng::from_seed(seed_hash.finalize().into())
+        rand::rngs::StdRng::from_seed(seed_hash.result().into())
     };
 
     let mut lhs = MaybeScalar::Zero;
